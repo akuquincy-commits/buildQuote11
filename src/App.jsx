@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   buildProductEvidenceSnapshot,
   calculateLineTotal,
@@ -11,9 +11,7 @@ import {
 } from './quoteCalculations.js'
 import {
   createQuotationPdf,
-  formatQuotationDate,
   getQuotationPdfFilename,
-  getQuotationValidityDate,
 } from './quotationPdf.js'
 import './App.css'
 
@@ -21,7 +19,6 @@ const navigation = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
   { label: 'Login', href: '#login' },
   { label: 'Get Started', href: '#start' },
 ]
@@ -46,30 +43,6 @@ const workflowSteps = [
   'Review sections, line items and assumptions',
   'Refine with AI after proposal creation',
   'Export or send a polished PDF',
-]
-
-const pricingPlans = [
-  {
-    name: 'Free',
-    price: 'GH₵0',
-    description: 'For solo contractors testing the workflow.',
-    features: ['Up to 3 quotations', 'Manual editing', 'Basic PDF export', 'Limited AI drafting'],
-    featured: false,
-  },
-  {
-    name: 'Pro',
-    price: 'GH₵180',
-    description: 'For active businesses creating multiple quotes each week.',
-    features: ['Unlimited quotations', 'AI quotation refinement', 'Expanded material research', 'Branding and saved history'],
-    featured: true,
-  },
-  {
-    name: 'Business',
-    price: 'GH₵420',
-    description: 'For larger teams and multi-site commercial work.',
-    features: ['Team access', 'Advanced templates', 'Priority support', 'Audit-friendly billing logs'],
-    featured: false,
-  },
 ]
 
 const createQuoteId = () =>
@@ -148,19 +121,6 @@ const mockResearchResults = [
   },
 ]
 
-const researchResults = import.meta.env.DEV ? mockResearchResults : []
-
-const suggestedSectionTypes = [
-  'Painting',
-  'Tiling',
-  'Doors and Fittings',
-  'Kitchen',
-  'Electrical',
-  'Plumbing',
-  'Roofing',
-  'Labour',
-  'Other Works',
-]
 
 const sidebarItems = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -168,7 +128,6 @@ const sidebarItems = [
   { id: 'quotations', label: 'My Quotations' },
   { id: 'research', label: 'Material Research' },
   { id: 'assistant', label: 'AI Assistant' },
-  { id: 'billing', label: 'Subscription & Billing' },
   { id: 'settings', label: 'Business Settings' },
   { id: 'help', label: 'Help' },
 ]
@@ -243,11 +202,17 @@ function App() {
   const [pendingChange, setPendingChange] = useState(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
+  const [researchResults, setResearchResults] = useState([])
+  const [researchLoading, setResearchLoading] = useState(false)
+  const [researchError, setResearchError] = useState('')
+  const [researchSource, setResearchSource] = useState('')
   const [revisionHistory, setRevisionHistory] = useState(() => readLocalState('buildquote.revisions', []))
   const [quoteOptions, setQuoteOptions] = useState(() => readLocalState('buildquote.options', []))
   const [selectedOptionId, setSelectedOptionId] = useState(null)
   const [selectedProductIds, setSelectedProductIds] = useState([])
   const [chatInput, setChatInput] = useState('')
+const [aiPrompt, setAiPrompt] = useState('')
+const [aiFeedback, setAiFeedback] = useState('')
   const [proposalError, setProposalError] = useState('')
   const [quoteErrors, setQuoteErrors] = useState([])
   const [saveFeedback, setSaveFeedback] = useState('')
@@ -303,6 +268,83 @@ function App() {
     setQuote(nextQuote)
     setQuoteTab('details')
     setActiveSidebar('new-quotation')
+  }
+
+const generateQuoteFromPrompt = () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt) {
+      setAiFeedback('Enter a project description before generating a quotation.')
+      return
+    }
+
+    const normalized = prompt.toLowerCase()
+    const sectionTemplates = []
+
+    const addTemplate = (name, items) => {
+      sectionTemplates.push({
+        id: `section-${createQuoteId()}`,
+        name,
+        items: items.map((item) => ({
+          id: `item-${createQuoteId()}`,
+          notes: 'AI-generated draft. Confirm quantities, rates and suitability before sending.',
+          ...item,
+        })),
+      })
+    }
+
+    if (normalized.includes('paint')) {
+      addTemplate('Painting', [
+        { description: 'Surface preparation and priming', quantity: 1, unit: 'm²', unitPrice: 12, labourCost: 0, materialCost: 0 },
+        { description: 'Emulsion paint application', quantity: 1, unit: 'm²', unitPrice: 18, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('tile') || normalized.includes('tiling')) {
+      addTemplate('Tiling', [
+        { description: 'Tile supply and installation', quantity: 1, unit: 'm²', unitPrice: 85, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('roof')) {
+      addTemplate('Roofing', [
+        { description: 'Roof sheeting and waterproofing', quantity: 1, unit: 'm²', unitPrice: 120, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('electrical') || normalized.includes('wiring')) {
+      addTemplate('Electrical', [
+        { description: 'Wiring, sockets and switches', quantity: 1, unit: 'point', unitPrice: 45, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('plumb')) {
+      addTemplate('Plumbing', [
+        { description: 'Pipe installation and fittings', quantity: 1, unit: 'point', unitPrice: 60, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('door') || normalized.includes('fitting')) {
+      addTemplate('Doors and Fittings', [
+        { description: 'Door supply and installation', quantity: 1, unit: 'item', unitPrice: 450, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (normalized.includes('kitchen')) {
+      addTemplate('Kitchen', [
+        { description: 'Kitchen cabinet and countertop work', quantity: 1, unit: 'item', unitPrice: 1500, labourCost: 0, materialCost: 0 },
+      ])
+    }
+    if (!sectionTemplates.length) {
+      addTemplate('General Works', [
+        { description: prompt.slice(0, 120), quantity: 1, unit: 'item', unitPrice: 0, labourCost: 0, materialCost: 0 },
+      ])
+    }
+
+    const nextQuote = createEmptyQuote()
+    nextQuote.projectTitle = prompt.slice(0, 80)
+    nextQuote.description = prompt
+    nextQuote.sections = sectionTemplates
+    nextQuote.notes = 'AI-generated draft. Review all quantities, prices, tax and terms before sharing with the client.'
+
+    setSelectedOptionId(null)
+    setQuoteErrors([])
+    setSaveFeedback('')
+    setQuote(nextQuote)
+    setAiFeedback('Quotation generated from the prompt. Review and edit it in the quotation editor.')
   }
 
   const saveDraft = () => {
@@ -563,7 +605,7 @@ function App() {
     }
     const section = quote.sections.find((entry) => entry.name.toLowerCase().includes('paint'))
     const item = section?.items[0]
-    const product = researchResults.find((entry) => entry.id === 2)
+    const product = researchResults.find((entry) => entry.id === 2) || mockResearchResults.find((entry) => entry.id === 2)
 
     setChatInput('')
     setProposalError('')
@@ -910,10 +952,77 @@ function App() {
     setProposalError('')
   }
 
+  const normalizeResearchProduct = useCallback((product, index = 0) => ({
+    id: product?.id ?? index + 1,
+    product: product?.product || product?.title || 'Unnamed product',
+    brand: product?.brand || '',
+    category: product?.category || 'Materials',
+    listedPrice: product?.listedPrice || null,
+    supplier: product?.supplier || product?.source || 'Source unavailable',
+    image: product?.image || product?.thumbnail || '',
+    specs: Array.isArray(product?.specs)
+      ? product.specs
+      : Array.isArray(product?.extensions)
+        ? product.extensions
+        : product?.snippet
+          ? [product.snippet]
+          : [],
+    link: product?.link || product?.product_link || '#',
+    retrievedAt: product?.retrievedAt || new Date().toISOString(),
+    evidenceType: product?.evidenceType || 'sourced-listing',
+    priceStatus: product?.priceStatus || 'unverified',
+    priceBasis: product?.priceBasis || 'sourced-listing',
+    availability: product?.availability || 'Availability not verified.',
+    limitations: Array.isArray(product?.limitations) ? product.limitations : [],
+  }), [])
+
+  const searchMaterials = useCallback(async () => {
+    setResearchLoading(true)
+    setResearchError('')
+    try {
+      const params = new URLSearchParams()
+      if (search.trim()) params.set('q', search.trim())
+      if (category !== 'All') params.set('category', category)
+      const response = await fetch(`/api/materials/search?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error(`Material search failed with status ${response.status}.`)
+      }
+      const data = await response.json()
+      const results = Array.isArray(data?.results) ? data.results : []
+      setResearchResults(results.map((product, index) => normalizeResearchProduct(product, index)))
+      setResearchSource(data?.source || 'server')
+      setResearchError(data?.source === 'serpapi' ? '' : data?.message || '')
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        const filtered = mockResearchResults.filter((product) => {
+          const matchesCategory = category === 'All' || product.category === category
+          const haystack = `${product.product} ${product.brand} ${product.specs.join(' ')}`.toLowerCase()
+          return matchesCategory && (!search.trim() || haystack.includes(search.trim().toLowerCase()))
+        })
+        setResearchResults(filtered.map((product, index) => normalizeResearchProduct(product, index)))
+        setResearchSource('development-fixtures')
+        setResearchError('Live SerpApi search is unavailable; showing clearly labelled development fixtures.')
+      } else {
+        setResearchResults([])
+        setResearchSource('unavailable')
+        setResearchError(error.message || 'Material search is unavailable.')
+      }
+    } finally {
+      setResearchLoading(false)
+    }
+  }, [search, category, normalizeResearchProduct])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchMaterials()
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [searchMaterials])
+
   const filteredProducts = researchResults.filter((product) => {
     const matchesCategory = category === 'All' || product.category === category
-    const haystack = `${product.product} ${product.brand} ${product.specs.join(' ')}`.toLowerCase()
-    return matchesCategory && haystack.includes(search.toLowerCase())
+    const haystack = `${product?.product || ''} ${product?.brand || ''} ${(product?.specs || []).join(' ')}`.toLowerCase()
+    return matchesCategory && haystack.includes((search || '').toLowerCase())
   })
   const comparedProducts = researchResults.filter((product) => selectedProductIds.includes(product.id))
 
@@ -1066,32 +1175,6 @@ function App() {
               </div>
             </section>
 
-            <section className="pricing-section" id="pricing">
-              <div className="section-heading narrow">
-                <span className="eyebrow">Flexible pricing</span>
-                <h2>Choose a plan that matches your quote volume.</h2>
-              </div>
-              <div className="pricing-grid">
-                {pricingPlans.map((plan) => (
-                  <article key={plan.name} className={`pricing-card ${plan.featured ? 'featured' : ''}`}>
-                    <div className="plan-name-row">
-                      <h3>{plan.name}</h3>
-                      {plan.featured && <span className="plan-badge">Popular</span>}
-                    </div>
-                    <div className="plan-price">{plan.price}</div>
-                    <p>{plan.description}</p>
-                    <ul>
-                      {plan.features.map((feature) => (
-                        <li key={feature}>{feature}</li>
-                      ))}
-                    </ul>
-                    <button type="button" className={plan.featured ? 'primary-btn' : 'secondary-btn'}>
-                      Choose Plan
-                    </button>
-                  </article>
-                ))}
-              </div>
-            </section>
           </main>
 
           <footer className="site-footer">
@@ -1149,7 +1232,6 @@ function App() {
                   {activeSidebar === 'quotations' && 'Saved quotations'}
                   {activeSidebar === 'research' && 'Material research'}
                   {activeSidebar === 'assistant' && 'AI assistant'}
-                  {activeSidebar === 'billing' && 'Subscription & Billing'}
                   {activeSidebar === 'settings' && 'Business settings'}
                   {activeSidebar === 'help' && 'Help centre'}
                 </h2>
@@ -1870,7 +1952,42 @@ function App() {
               </div>
             )}
 
-            {(activeSidebar === 'assistant' || activeSidebar === 'billing' || activeSidebar === 'settings' || activeSidebar === 'help') && (
+{activeSidebar === 'assistant' && (
+              <div className="panel">
+                <div className="panel-header">
+                  <h3>AI Assistant</h3>
+                </div>
+                <div className="demo-notice">
+                  Local prototype: no Gemma/Ollama or authenticated server is connected. Quotations generated here are draft starting points and must be reviewed before use.
+                </div>
+                <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); generateQuoteFromPrompt() }}>
+                  <label htmlFor="ai-quote-prompt">Describe the contractor's project</label>
+                  <textarea
+                    id="ai-quote-prompt"
+                    value={aiPrompt}
+                    onChange={(event) => setAiPrompt(event.target.value)}
+                    placeholder="e.g. Paint and tile a 3-bedroom house in Accra, including roofing repairs and electrical work."
+                    rows="5"
+                  />
+                  <button type="submit" className="primary-btn" disabled={!aiPrompt.trim()}>
+                    Generate quotation
+                  </button>
+                </form>
+                {aiFeedback && <p className="inline-success" role="status">{aiFeedback}</p>}
+                {quote.sections.length > 0 && (
+                  <div className="proposal-box">
+                    <h4>Generated quotation</h4>
+                    <p>{quote.projectTitle || 'Untitled project'}</p>
+                    <p>{quote.sections.length} section(s) · {toCurrency(calculateQuoteTotals(quote).grandTotal, quote.currency)}</p>
+                    <button type="button" className="primary-btn small-btn" onClick={() => { setQuoteTab('items'); setActiveSidebar('new-quotation') }}>
+                      Open in quotation editor
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(activeSidebar === 'settings' || activeSidebar === 'help') && (
               <div className="panel empty-panel">
                 <h3>Feature-ready workspace</h3>
                 <p>
