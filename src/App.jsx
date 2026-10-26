@@ -1227,6 +1227,7 @@ const generateQuoteFromPrompt = () => {
             <>
               <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
               <aside className="sidebar" id="workspace-sidebar" ref={sidebarRef} role="dialog" aria-modal="true" aria-label="Workspace navigation">
+            <div className="sidebar-top">
             <button type="button" className="nav-item sidebar-close" onClick={() => setSidebarOpen(false)}>
               Hide sidebar
             </button>
@@ -1254,6 +1255,7 @@ const generateQuoteFromPrompt = () => {
                 </button>
               ))}
             </nav>
+            </div>
 
             <div className="sidebar-profile">
               <div className="avatar">KS</div>
