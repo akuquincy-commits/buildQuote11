@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   buildProductEvidenceSnapshot,
   calculateLineTotal,
@@ -191,6 +191,38 @@ const formatRevisionValue = (value) => {
 
 function App() {
   const [view, setView] = useState('landing')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const sidebarRef = useRef(null)
+  const sidebarToggleRef = useRef(null)
+
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const toggleButton = sidebarToggleRef.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    sidebarRef.current?.querySelector('button')?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSidebarOpen(false)
+      if (event.key !== 'Tab') return
+      const buttons = sidebarRef.current?.querySelectorAll('button')
+      if (!buttons?.length) return
+      const first = buttons[0]
+      const last = buttons[buttons.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+      toggleButton?.focus()
+    }
+  }, [sidebarOpen])
   const [activeSidebar, setActiveSidebar] = useState('dashboard')
   const [quoteTab, setQuoteTab] = useState('details')
   const [quote, setQuote] = useState(loadQuoteDraft)
@@ -1191,7 +1223,14 @@ const generateQuoteFromPrompt = () => {
         </div>
       ) : (
         <div className="app-shell">
-          <aside className="sidebar">
+          {sidebarOpen && (
+            <>
+              <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+              <aside className="sidebar" id="workspace-sidebar" ref={sidebarRef} role="dialog" aria-modal="true" aria-label="Workspace navigation">
+            <div className="sidebar-top">
+            <button type="button" className="nav-item sidebar-close" onClick={() => setSidebarOpen(false)}>
+              Hide sidebar
+            </button>
             <div className="sidebar-brand">
               <div className="brand-mark">BQ</div>
               <div>
@@ -1206,12 +1245,17 @@ const generateQuoteFromPrompt = () => {
                   key={item.id}
                   type="button"
                   className={activeSidebar === item.id ? 'nav-item active' : 'nav-item'}
-                  onClick={() => item.id === 'new-quotation' ? startNewQuote() : setActiveSidebar(item.id)}
+                  onClick={() => {
+                    setSidebarOpen(false)
+                    if (item.id === 'new-quotation') startNewQuote()
+                    else setActiveSidebar(item.id)
+                  }}
                 >
                   {item.label}
                 </button>
               ))}
             </nav>
+            </div>
 
             <div className="sidebar-profile">
               <div className="avatar">KS</div>
@@ -1220,9 +1264,21 @@ const generateQuoteFromPrompt = () => {
                 <span>Pro plan</span>
               </div>
             </div>
-          </aside>
+              </aside>
+            </>
+          )}
 
-          <main className="workspace">
+          <main className="workspace" inert={sidebarOpen}>
+            <button
+              ref={sidebarToggleRef}
+              type="button"
+              className="ghost-btn sidebar-toggle"
+              aria-expanded={sidebarOpen}
+              aria-controls="workspace-sidebar"
+              onClick={() => setSidebarOpen((open) => !open)}
+            >
+              Show sidebar
+            </button>
             <header className="workspace-header">
               <div>
                 <span className="eyebrow tight">Workspace</span>
